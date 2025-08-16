@@ -1,105 +1,39 @@
-<!DOCTYPE html>
-<html lang="en">
+<!doctype html>
+<html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tasbih Digital pembuat khusyuk</title>
-    <style>
-        body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
-            margin: 0;
-            font-family: Arial, sans-serif;
-            background-image: url('https://files.catbox.moe/496fjt.jpg');
-  background-size: cover;
-  background-position: center;
-  background-repeat: no-repeat;
-        }
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Tracker Sendi - Lang</title>
 
-        .container {
-            text-align: center;
-            background-color: white;
-            padding: 2rem;
-            border-radius: 20px;
-            box-shadow: 0 0 20px rgba(0,0,0,0.1);
-        }
+  <!-- styles -->
+  <link rel="stylesheet" href="styles.css" />
 
-        .counter {
-            font-size: 5rem;
-            margin: 1rem 0;
-            color: #2c3e50;
-        }
-
-        button {
-            font-size: 1.2rem;
-            padding: 1rem 2rem;
-            margin: 0.5rem;
-            border: none;
-            border-radius: 10px;
-            cursor: pointer;
-            transition: transform 0.1s;
-        }
-
-        button:active {
-            transform: scale(0.95);
-        }
-
-        .count-btn {
-            background-color: #27ae60;
-            color: white;
-        }
-
-        .reset-btn {
-            background-color: #e74c3c;
-            color: white;
-        }
-
-        .click-animation {
-            animation: clickEffect 0.3s;
-        }
-
-        @keyframes clickEffect {
-            0% { transform: scale(1); }
-            50% { transform: scale(0.9); }
-            100% { transform: scale(1); }
-        }
-    </style>
+  <!-- TensorFlow.js & Pose Detection -->
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-core"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-converter"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-backend-webgl"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection"></script>
 </head>
 <body>
-    <div class="container">
-        <h1>Tasbih Digital</h1>
-        <p style="color: #FF0000; font-weight: bold;">Siesta Version by Lang</p>
-        <div class="counter" id="counter">0</div>
-        <button class="count-btn" id="countBtn" aria-label="Tambahkan hitungan">Tasbih</button>
-        <button class="reset-btn" id="resetBtn" aria-label="Reset hitungan">Reset</button>
-    </div>
+  <!-- video (hidden visually, used as source) and canvas overlay -->
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="overlay"></canvas>
 
-    <script>
-        let count = 0;
-        const counterElement = document.getElementById('counter');
-        const countBtn = document.getElementById('countBtn');
-        const resetBtn = document.getElementById('resetBtn');
+  <!-- UI -->
+  <div id="fps">FPS: 0</div>
 
-        function updateCounter() {
-            counterElement.textContent = count;
-            counterElement.classList.add('click-animation');
-            setTimeout(() => {
-                counterElement.classList.remove('click-animation');
-            }, 300);
-        }
+  <!-- tombol ganti kamera pojok kanan bawah -->
+  <button id="btnSwitch" class="corner-btn" title="Ganti kamera">
+    <!-- simple icon (svg) -->
+    <svg viewBox="0 0 24 24" width="28" height="28" aria-hidden="true">
+      <path fill="white" d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5 0 .74-.16 1.44-.44 2.06l1.53 1.53C19.85 14.55 20 13.79 20 13c0-4.97-4.03-9-9-9zM6.41 6.41L5 7.83C4.44 8.38 4 9.16 4 10c0 4.97 4.03 9 9 9v3l4-4-4-4v3c-3.87 0-7-3.13-7-7 0-1.2.3-2.33.82-3.34l-1.41-1.41z"/>
+    </svg>
+  </button>
 
-        countBtn.addEventListener('click', () => {
-            count++;
- updateCounter();
-        });
+  <!-- small instruction (hidden on production) -->
+  <div id="hint">Izinkan akses kamera. Tekan tombol pojok kanan bawah untuk ganti kamera.</div>
 
-        resetBtn.addEventListener('click', () => {
-            count = 0;
-            updateCounter();
-        });
-    </script>
+  <!-- main app script -->
+  <script src="app.js"></script>
 </body>
-</html>
+    </html>
