@@ -1,87 +1,57 @@
-/* Reset sederhana */
 * { box-sizing: border-box; margin: 0; padding: 0; }
+html,body { width:100%; height:100%; background:black; overflow:hidden; font-family:system-ui,Segoe UI,Roboto,Arial; }
 
-/* Full screen background black */
-html, body {
-  width: 100%;
-  height: 100%;
-  background: black;
-  overflow: hidden;
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial;
-}
-
-/* video kept behind canvas but full area (cover) */
+/* video hidden (we use canvas overlay for visuals) */
 video#video {
   position: absolute;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
-  object-fit: cover; /* ensures full screen coverage */
-  transform: scaleX(-1); /* mirror for front camera; flipped back in JS if needed */
-  display: none; /* keep hidden; canvas shows visuals */
+  left: 0; top: 0;
+  width: 100vw; height: 100vh;
+  object-fit: cover;
+  display: none; /* keep hidden; canvas draws overlay */
 }
 
-/* overlay canvas sits over whole screen */
+/* overlay canvas full screen */
 canvas#overlay {
   position: absolute;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
+  left: 0; top: 0;
+  width: 100vw; height: 100vh;
   touch-action: none;
-  -webkit-user-select: none;
-  user-select: none;
 }
 
-/* FPS counter top-left */
-#fps {
+/* fps + name top-left */
+#info {
   position: absolute;
-  left: 12px;
-  top: 12px;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  z-index: 50;
+  pointer-events: none;
+}
+#fps, #name {
   background: rgba(0,0,0,0.45);
   color: #e6ffcc;
   padding: 6px 8px;
   border-radius: 6px;
   font-family: monospace;
   font-size: 14px;
-  z-index: 30;
-  pointer-events: none;
 }
 
-/* Switch camera button in bottom-right */
+/* switch camera button bottom-right */
 .corner-btn {
   position: absolute;
   right: 18px;
   bottom: 18px;
-  width: 64px;
-  height: 64px;
+  width: 64px; height: 64px;
   border-radius: 50%;
   background: rgba(0,0,0,0.55);
-  border: 1px solid rgba(255,255,255,0.07);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 40;
+  border: 1px solid rgba(255,255,255,0.06);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 60;
   cursor: pointer;
-  transition: transform .12s ease, background .12s ease;
+  transition: transform .12s ease;
   padding: 6px;
 }
 .corner-btn:active { transform: scale(.96); }
-.corner-btn svg { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.6)); }
-
-/* small hint text (optional) */
-#hint {
-  position: absolute;
-  left: 12px;
-  bottom: 12px;
-  color: rgba(255,255,255,0.7);
-  font-size: 13px;
-  background: rgba(0,0,0,0.35);
-  padding: 6px 8px;
-  border-radius: 6px;
-  z-index: 20;
-}
-
-/* responsive: hide hint on small screens to avoid clutter */
-@media (max-height: 600px) {
-  #hint { display: none; }
-}
+.corner-btn svg { filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6)); }
