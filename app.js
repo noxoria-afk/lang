@@ -1,164 +1,81 @@
-// app.js
-// Pastikan file ini dipanggil setelah DOM ready (index.html memanggil di akhir body)
+// app.js (type=module)
+// Uses MediaPipe Holistic + Camera + Drawing utils
+// Place this file in same folder as index.html
 
+import { Holistic } from 'https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5/holistic.js';
+import { Camera } from 'https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.4/camera_utils.js';
+import { drawConnectors, drawLandmarks } from 'https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils@0.4/drawing_utils.js';
+import { POSE_CONNECTIONS } from 'https://cdn.jsdelivr.net/npm/@mediapipe/pose@0.5/pose.js';
+import { HAND_CONNECTIONS } from 'https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js';
+import { FACEMESH_TESSELATION } from 'https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js';
+
+// DOM
 const video = document.getElementById('video');
 const canvas = document.getElementById('overlay');
 const ctx = canvas.getContext('2d', { alpha: true });
 const fpsLabel = document.getElementById('fps');
 const switchBtn = document.getElementById('btnSwitch');
+const nameLabel = document.getElementById('name');
 
-let detector = null;
-let running = false;
-
-// prefer environment (back) then user
-let currentFacing = 'environment'; // 'user' = front, 'environment' = back
-let mirrorForUser = true; // mirror when front camera
-
-// FPS calc
-let frames = 0;
+let cameraInstance = null;
+let holistic = null;
 let lastFpsTime = performance.now();
+let frames = 0;
+let currentFacing = 'environment'; // default use back camera
+let mirrorBackCamera = true; // per request: mirror back camera
 
-// model config
-const modelConfig = {
-  modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING
-};
-
-// helper: start camera with facingMode
-async function startCamera(facingMode) {
-  try {
-    if (video.srcObject) {
-      video.srcObject.getTracks().forEach(t => t.stop());
-    }
-
-    const constraints = {
-      audio: false,
-      video: {
-        facingMode: { ideal: facingMode },
-        width: { ideal: 1280 },
-        height: { ideal: 720 }
-      }
-    };
-
-    const stream = await navigator.mediaDevices.getUserMedia(constraints);
-    video.srcObject = stream;
-
-    // detect actual facing (some devices ignore facingMode)
-    const track = stream.getVideoTracks()[0];
-    const settings = track.getSettings();
-    // In some browsers, facingMode exists on track settings
-    if (settings && settings.facingMode) {
-      if (settings.facingMode === 'user') mirrorForUser = true;
-      else mirrorForUser = false;
-    } else {
-      // fallback keep mirror when requested user camera
-      mirrorForUser = (facingMode === 'user');
-    }
-
-    // show video element (hidden by CSS earlier) only if needed
-    video.style.display = 'block';
-
-    await video.play();
-    resizeCanvasToDisplaySize();
-  } catch (err) {
-    console.error('Gagal mengakses kamera:', err);
-    alert('Gagal mengakses kamera. Pastikan izinkan kamera pada browser.');
-  }
-}
-
-// size canvas to display pixel size of video
-function resizeCanvasToDisplaySize() {
-  const vw = video.videoWidth;
-  const vh = video.videoHeight;
-  if (!vw || !vh) return;
-  // set canvas pixel dimensions to match video resolution for accurate overlay
+// Resize canvas to match video pixel size (we will draw in video coordinates)
+function resizeCanvas() {
+  const vw = video.videoWidth || window.innerWidth;
+  const vh = video.videoHeight || window.innerHeight;
   canvas.width = vw;
   canvas.height = vh;
-  // fit canvas to viewport (CSS handles object-fit:cover), but drawing uses canvas pixels
-  // we rely on CSS to scale canvas to full screen while drawing in video coordinate space
 }
 
-// draw keypoints+lines with styling similar to sample (menempel ke tubuh)
-function drawPose(keypoints) {
-  if (!keypoints) return;
-  // clear
+// Draw results from Holistic
+function onResults(results) {
+  // Ensure canvas size
+  resizeCanvas();
+
+  // Clear and prepare
+  ctx.save();
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // If canvas is scaled with CSS to viewport, we draw in video coordinates.
-  // Mirror horizontally if front camera and we want mirrored preview.
-  ctx.save();
-  if (mirrorForUser) {
+  // Mirror logic: if we want to mirror the preview for camera
+  // If camera is mirrored, we flip horizontally
+  const shouldMirror = (currentFacing === 'user') ? true : mirrorBackCamera;
+  if (shouldMirror) {
     ctx.translate(canvas.width, 0);
     ctx.scale(-1, 1);
   }
 
-  // draw semi-transparent fill for palm (example: connect specific points)
-  // We'll draw lines between adjacent pairs (MoveNet adjacency) and bigger circles on joints.
-  ctx.lineWidth = Math.max(2, Math.round(Math.min(canvas.width, canvas.height) * 0.003));
-  ctx.lineJoin = 'round';
-  ctx.lineCap = 'round';
-
-  // draw skeleton edges
-  const adjacentPairs = poseDetection.util.getAdjacentPairs(poseDetection.SupportedModels.MoveNet);
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  ctx.globalCompositeOperation = 'source-over';
-  for (const [i, j] of adjacentPairs) {
-    const a = keypoints[i];
-    const b = keypoints[j];
-    if (a.score > 0.35 && b.score > 0.35) {
-      ctx.beginPath();
-      ctx.moveTo(a.x, a.y);
-      ctx.lineTo(b.x, b.y);
-      ctx.stroke();
-    }
+  // Draw face mesh (optional, light)
+  if (results.faceLandmarks) {
+    drawConnectors(ctx, results.faceLandmarks, FACEMESH_TESSELATION, { lineWidth: 0.5, color: 'rgba(255,255,255,0.08)' });
   }
 
-  // draw joints
-  for (const kp of keypoints) {
-    if (kp.score > 0.35) {
-      ctx.beginPath();
-      // circle radius relative to canvas size
-      const r = Math.max(3, Math.round(Math.min(canvas.width, canvas.height) * 0.008));
-      ctx.fillStyle = 'rgba(255,255,255,0.95)';
-      ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-      ctx.lineWidth = 1;
-      ctx.arc(kp.x, kp.y, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-    }
+  // Draw pose (body) connections + landmarks
+  if (results.poseLandmarks) {
+    drawConnectors(ctx, results.poseLandmarks, POSE_CONNECTIONS, { color: 'rgba(0,200,255,0.9)', lineWidth: Math.max(2, canvas.width * 0.002) });
+    drawLandmarks(ctx, results.poseLandmarks, { color: 'white', lineWidth: 1, radius: Math.max(2, canvas.width * 0.006) });
   }
 
-  // Example: draw a filled palm polygon if we have a hand keypoints set (MoveNet includes wrists only).
-  // If you need detailed finger joints, consider using HandPose/MediaPipe Hands model separately and overlay them.
+  // Draw left & right hands with detailed fingers (21 landmarks)
+  if (results.leftHandLandmarks) {
+    drawConnectors(ctx, results.leftHandLandmarks, HAND_CONNECTIONS, { color: 'rgba(255,100,100,0.95)', lineWidth: Math.max(2, canvas.width * 0.004) });
+    drawLandmarks(ctx, results.leftHandLandmarks, { color: 'white', lineWidth: 1, radius: Math.max(2, canvas.width * 0.007) });
+  }
+  if (results.rightHandLandmarks) {
+    drawConnectors(ctx, results.rightHandLandmarks, HAND_CONNECTIONS, { color: 'rgba(100,255,100,0.95)', lineWidth: Math.max(2, canvas.width * 0.004) });
+    drawLandmarks(ctx, results.rightHandLandmarks, { color: 'white', lineWidth: 1, radius: Math.max(2, canvas.width * 0.007) });
+  }
+
+  // Optional: highlight palm area by connecting certain hand points (visual)
+  // (the drawConnectors above already draws full fingers so palm lines visible)
+
   ctx.restore();
-}
 
-// main loop
-async function renderLoop() {
-  if (!detector || !video || video.readyState < 2) {
-    requestAnimationFrame(renderLoop);
-    return;
-  }
-
-  // maintain canvas size if video changes
-  if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
-    resizeCanvasToDisplaySize();
-  }
-
-  try {
-    const poses = await detector.estimatePoses(video, { maxPoses: 1, flipHorizontal: false });
-    if (poses && poses.length > 0) {
-      const pose = poses[0];
-      // pose.keypoints have {x,y,score,name}
-      drawPose(pose.keypoints);
-    } else {
-      // clear if no pose detected
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-    }
-  } catch (err) {
-    console.error('Estimator error', err);
-  }
-
-  // fps counting
+  // FPS
   frames++;
   const now = performance.now();
   if (now - lastFpsTime >= 1000) {
@@ -166,38 +83,100 @@ async function renderLoop() {
     frames = 0;
     lastFpsTime = now;
   }
-
-  requestAnimationFrame(renderLoop);
 }
 
-// init detector + camera
-async function init() {
-  // set backend
-  await tf.setBackend('webgl');
-  await tf.ready();
+// Initialize MediapPipe Holistic + Camera
+async function initHolistic() {
+  holistic = new Holistic({
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic@0.5/${file}`
+  });
 
-  // create detector (MoveNet)
-  detector = await poseDetection.createDetector(poseDetection.SupportedModels.MoveNet, modelConfig);
+  holistic.setOptions({
+    modelComplexity: 1,      // 0..2 higher = slower, more accurate
+    smoothLandmarks: true,
+    enableSegmentation: false,
+    refineFaceLandmarks: false,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
 
-  // start camera with currentFacing
+  holistic.onResults(onResults);
+
+  // Start camera with facingMode
   await startCamera(currentFacing);
+}
 
-  // start loop
-  if (!running) {
-    running = true;
-    renderLoop();
+// Start camera using MediaDevices + MediaPipe Camera helper
+async function startCamera(facingMode) {
+  // Stop previous camera if exists
+  if (cameraInstance) {
+    try {
+      cameraInstance.stop();
+    } catch (e) {}
+    cameraInstance = null;
+  }
+  // Stop any tracks on video element
+  if (video.srcObject) {
+    video.srcObject.getTracks().forEach(t => t.stop());
+    video.srcObject = null;
+  }
+
+  // Request media with ideal facingMode
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: facingMode },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      },
+      audio: false
+    });
+
+    // attach stream to video for fallback / preview (camera util uses video internally)
+    video.srcObject = stream;
+    await video.play();
+    resizeCanvas();
+
+    // Create MediaPipe Camera that repeatedly sends frames to holistic
+    cameraInstance = new Camera(video, {
+      onFrame: async () => {
+        await holistic.send({ image: video });
+      },
+      width: video.videoWidth || 1280,
+      height: video.videoHeight || 720
+    });
+
+    cameraInstance.start();
+
+    // set mirror behavior visually: we draw mirrored inside onResults based on currentFacing
+    // but also keep video element mirrored if you want to view it (video is hidden though)
+    if (currentFacing === 'user') {
+      video.style.transform = 'scaleX(-1)';
+    } else {
+      // If user wants back camera mirrored, also mirror video element
+      video.style.transform = mirrorBackCamera ? 'scaleX(-1)' : '';
+    }
+
+  } catch (err) {
+    console.error('Gagal mengakses kamera:', err);
+    alert('Gagal mengakses kamera. Periksa izin kamera di browser / gunakan HTTPS atau localhost. \nDetail: ' + (err && err.message ? err.message : err));
   }
 }
 
-// handle switch camera
+// Switch camera button handler
 switchBtn.addEventListener('click', async () => {
-  // toggle
   currentFacing = currentFacing === 'environment' ? 'user' : 'environment';
+  // restart camera with new facing
   await startCamera(currentFacing);
 });
 
-// start everything
-init().catch(err => {
+// Kick off
+initHolistic().catch(err => {
   console.error('Init error', err);
-  alert('Terjadi kesalahan saat inisialisasi: ' + err.message);
+  alert('Init error: ' + (err && err.message ? err.message : err));
+});
+
+// Resize canvas on window resize to keep aspect fit
+window.addEventListener('resize', () => {
+  resizeCanvas();
 });
